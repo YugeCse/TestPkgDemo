@@ -38,11 +38,15 @@ jobs:
 
     # 4. 构建未签名 APK
     - name: Build unsigned APK
-      run: 
+      run:
         ./gradlew assembleRelease
+
+    # 5. 查找到编译后的APK
+    - name: Find the APK file
+      run:
         UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
 
-    # 5. 上传产物
+    # 6. 上传产物
     - name: Upload APKS
       uses: actions/upload-artifact@v4
       with:
