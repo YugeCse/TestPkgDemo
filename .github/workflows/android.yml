@@ -1,0 +1,77 @@
+name: Android Manual Build & Sign (Keystore from URL)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "选择要构建的分支"
+        required: true
+        default: "main"
+        type: string
+      flavor:
+        description: "输入 flavor 名（如 dev、prod、qa）"
+        required: true
+        default: "prod"
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 拉取代码
+    - name: Checkout selected branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.branch }}
+
+    # 2. 设置 Java
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+        cache: gradle
+
+    # 3. 缓存 Gradle 依赖
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: ~/.gradle/caches
+        key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: gradle-
+
+    # 4. 构建未签名 APK
+    - name: Build unsigned APK
+      run: ./gradlew assemble${{ github.event.inputs.flavor }}Release
+
+    # 5. 从 URL 下载 keystore
+    - name: Download keystore
+      run: curl -L "$KEYSTORE_URL" -o release.keystore
+      env:
+        KEYSTORE_URL: ${{ secrets.KEYSTORE_URL }}
+
+    # 6. 签名 APK
+    - name: Sign APK
+      run: |
+        UNSIGNED_APK=$(find app/build/outputs/apk/${{ github.event.inputs.flavor }}/release -name "*-unsigned.apk" | head -n 1)
+        jarsigner -verbose \
+          -keystore release.keystore \
+          -storepass ${{ secrets.KEYSTORE_PASSWORD }} \
+          -keypass ${{ secrets.KEY_PASSWORD }} \
+          "$UNSIGNED_APK" \
+          ${{ secrets.KEY_ALIAS }}
+
+    # 7. 对齐优化（zipalign）
+    - name: Zipalign APK
+      run: |
+        UNSIGNED_APK=$(find app/build/outputs/apk/${{ github.event.inputs.flavor }}/release -name "*-unsigned.apk" | head -n 1)
+        ALIGNED_APK=${UNSIGNED_APK/-unsigned.apk/-aligned.apk}
+        $ANDROID_HOME/build-tools/*/zipalign -v -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+
+    # 8. 上传产物
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-${{ github.event.inputs.flavor }}-release.apk
+        path: app/build/outputs/apk/${{ github.event.inputs.flavor }}/release/*-aligned.apk
