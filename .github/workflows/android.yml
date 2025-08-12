@@ -50,5 +50,5 @@ jobs:
     - name: Upload APKS
       uses: actions/upload-artifact@v4
       with:
-        name: $UNISIGNED_APK
+        name: ${{UNISIGNED_APK}}
         path: app/build/outputs/apk/release/*.apk
